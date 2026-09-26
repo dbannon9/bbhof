@@ -110,14 +110,14 @@ with ballots_col:
 # # # #     }
 # # # # )
 
-voters_display = (
-    votes_by_voter[['voter_name','vote_count']]
-    .rename(columns={
-        'voter_name': 'Voter',
-        'vote_count': 'Votes Cast (2026)'
-    })
-)
+# # # # voters_display = (
+# # # #     votes_by_voter[['voter_name','vote_count']]
+# # # #     .rename(columns={
+# # # #         'voter_name': 'Voter',
+# # # #         'vote_count': 'Votes Cast (2026)'
+# # # #     })
+# # # # )
 
-for _, row in voters_display.iterrows():
-    with st.expander(row["Voter"], expanded=False):
-        st.write("Votes Cast (2026)", row["Votes Cast (2026)"])
+# # # # for _, row in voters_display.iterrows():
+# # # #     with st.expander(row["Voter"], expanded=False):
+# # # #         st.write("Votes Cast (2026)", row["Votes Cast (2026)"])
