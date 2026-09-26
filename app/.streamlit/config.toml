@@ -1,10 +1,10 @@
 [theme]
 base = "dark"
-primaryColor = "#f1d71c"
+primaryColor = "#ba0c2f"
 backgroundColor = "#000e29"
 secondaryBackgroundColor = "#00163d"
 dataframeBorderColor = "#949caa"
-borderColor = "#87cefa"
+borderColor = "#ba0c2f"
 
 [server]
 fileWatcherType = "none"

@@ -6,7 +6,7 @@ import pandas as pd
 neon = st.connection("neon",type="sql")
 
 #%% Run the App
-st.set_page_config(layout="wide",page_title="Baseball Hall of Fame Tracker")
+st.set_page_config(page_title="Baseball Hall of Fame Tracker")
 
 dashboard = st.Page("pages/dashboard.py",title="Home",icon=":material/home:")
 nav = st.navigation([

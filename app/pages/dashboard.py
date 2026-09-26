@@ -6,7 +6,7 @@ import pandas as pd
 neon = st.connection("neon",type="sql")
 
 #%% Run the App
-st.set_page_config(layout="wide",page_title="Baseball Hall of Fame Tracker")
+st.set_page_config(page_title="Baseball Hall of Fame Tracker")
 
 
 def fetch_table_data(table_name):
@@ -52,19 +52,18 @@ votes_by_voter = (
     .size()
     .reset_index(name='vote_count')
 )
-votes_by_voter = voters[['voter_id']].merge(
+votes_by_voter = voters.merge(
     votes_by_voter,
     on='voter_id',
     how='left'
 )
 vote_distribution = (
-    votes_by_voter
+    votes_by_voter[['voter_id','vote_count']]
     .groupby('vote_count')
     .size()
     .reset_index(name='num_voters')
     .sort_values('vote_count',ascending=False)
 )
-
 #%% Display
 st.title("Baseball Hall of Fame Tracker")
 
@@ -74,7 +73,7 @@ with players_col:
         ['player_name', 'vote_count', 'percentage']
     ].rename(columns={
         'player_name': 'Player',
-        'vote_count': 'Total Number of Votes',
+        'vote_count': 'Total Votes',
         'percentage': 'Percentage of Ballots'
     })
     st.dataframe(players_display,hide_index=True,column_config={'Percentage of Ballots': st.column_config.NumberColumn(format='%.1f%%')})
@@ -84,7 +83,7 @@ with ballots_col:
     vote_dist_display['vote_count'] = vote_dist_display['vote_count'].astype(int).astype(str) + ' Vote Ballots'
     vote_dist_display.rename(columns={
         'vote_count': 'Vote Counts',
-        'num_voters': 'Number of Ballots by Vote Count'
+        'num_voters': 'Ballots'
     },inplace=True)
     st.dataframe(vote_dist_display, hide_index=True)
 
@@ -122,3 +121,15 @@ st.dataframe(
         )
     }
 )
+
+voters_display = (
+    votes_by_voter[['voter_name','vote_count']]
+    .rename(columns={
+        'voter_name': 'Voter',
+        'vote_count': 'Votes Cast (2026)'
+    })
+)
+
+for _, row in voters_display.iterrows():
+    with st.expander(row["Voter"], expanded=False):
+        st.write("Votes Cast (2026)", row["Votes Cast (2026)"])
