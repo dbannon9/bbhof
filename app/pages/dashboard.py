@@ -15,9 +15,13 @@ ballots = fetch_table_data(table_name='ballots')
 
 #%% Current Counts Sample
 
+# Filter selected ballots
+
+selected_ballots = ballots.loc[ballots['is_player_selected'] == True]
+
 # Count ballots per player
 vote_counts = (
-    ballots
+    selected_ballots
     .groupby('player_id')
     .size()
     .reset_index(name='vote_count')
@@ -34,7 +38,7 @@ players_with_count = players_with_count.sort_values(by='vote_count', ascending=F
 
 # Votes on ballot counts:
 votes_by_voter = (
-    ballots
+    selected_ballots
     .groupby('voter_id')
     .size()
     .reset_index(name='vote_count')
