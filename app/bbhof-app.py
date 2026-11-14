@@ -11,11 +11,13 @@ if not check_password():
 #%% Run the App
 st.set_page_config(page_title="Baseball Hall of Fame Tracker",layout="wide")
 
-dashboard = st.Page("pages/dashboard.py",title="Home",icon=":material/home:")
+home_page = st.Page("pages/home-page.py",title="Home",icon=":material/home:")
+dashboard = st.Page("pages/dashboard.py",title="Dashboard",icon=":material/dashboard:")
 player_page = st.Page("pages/player-page.py",title="Players",icon=":material/sports_baseball:")
 # # # # # # # voter_page = st.Page("pages/voter-page.py",title="Voters",icon=":material/how_to_vote:")
 admin_panel = st.Page("pages/admin-panel.py",title="Admin Panel",icon=":material/settings:")
 nav = st.navigation([
+    home_page,
     dashboard,
     player_page,
     admin_panel
