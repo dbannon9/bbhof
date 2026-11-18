@@ -1,53 +1,69 @@
 #%% Imports & connections
-import streamlit as st
-import pandas as pd
-from utils import fetch_table_data
 import html
+
 import pandas as pd
+import streamlit as st
 
 #%% Get Data
 # --------------------------------------------------------------------------
+# All filtering happens in Postgres, so only the selected year's rows (plus
+# the prior year, for gain/loss) ever leave the database — instead of pulling
+# the full 110k+ row ballots table on every rerun.
 
 FINAL_YEAR_OFFSET = 10
+CONNECTION_NAME = "neon"   # name of your [connections.<name>] block in secrets.toml
+CACHE_TTL = 600            # seconds; call st.cache_data.clear() after a ballot is added
 
-def load_tracker_data(year: int, fetch=None) -> dict[str, pd.DataFrame]:
-    if fetch is None:
-        from utils import fetch_table_data as fetch
 
-    bbwaa = fetch(table_name="bbwaa_ballots")
-    players = fetch(table_name="players")
-    voters = fetch(table_name="voters")
-    ballots = fetch(table_name="ballots")
+def run_query(sql: str, params: dict | None = None) -> pd.DataFrame:
+    """Parameterized, cached query against Neon (st.connection handles caching)."""
+    conn = st.connection(CONNECTION_NAME, type="sql")
+    return conn.query(sql, params=params or {}, ttl=CACHE_TTL)
 
-    # Players on this year's ballot, in bbwaa_ballots order (no sorting).
-    on_ballot = bbwaa.loc[bbwaa["year"] == year, ["player_id"]].drop_duplicates()
-    players = on_ballot.merge(
-        players[["player_id", "player_name", "first_year_on_ballot"]],
-        on="player_id",
-        how="left",
-    ).rename(columns={"player_name": "name"})
 
-    cols = [
-        "voter_id", "player_id", "year", "is_player_selected",
-        "is_anonymous", "include_change_color", "include_in_change_total",
-    ]
-    this_and_prev = ballots.loc[ballots["year"].isin([year, year - 1]), cols]
+SQL_PLAYERS = """
+    SELECT b.player_id, p.player_name AS name, p.first_year_on_ballot
+    FROM bbwaa_ballots b
+    LEFT JOIN players p ON p.player_id = b.player_id
+    WHERE b.year = :year
+"""
 
-    this_year = ballots.loc[ballots["year"] == year]
-    anon_voter_ids = set(this_year.loc[this_year["is_anonymous"] == True, "voter_id"])
+SQL_BALLOTS = """
+    SELECT voter_id, player_id, year, is_player_selected,
+           is_anonymous, include_change_color, include_in_change_total
+    FROM ballots
+    WHERE year IN (:year, :prev_year)
+"""
 
-    voters = (
-        voters.loc[voters["voter_id"].isin(this_year["voter_id"]), ["voter_id", "voter_name"]]
-        .rename(columns={"voter_name": "name"})
-        .assign(voter_is_anonymous=lambda d: d["voter_id"].isin(anon_voter_ids))
-    )
+SQL_VOTERS = """
+    SELECT v.voter_id,
+           v.voter_name AS name,
+           bool_or(COALESCE(b.is_anonymous, FALSE)) AS voter_is_anonymous
+    FROM voters v
+    JOIN ballots b ON b.voter_id = v.voter_id AND b.year = :year
+    GROUP BY v.voter_id, v.voter_name
+    ORDER BY v.voter_name
+"""
 
-    earlier = ballots.loc[ballots["year"] < year, ["voter_id"]].drop_duplicates()
+# Only this year's voters matter for the "first-time voter" flag.
+SQL_EARLIER_VOTERS = """
+    SELECT DISTINCT e.voter_id
+    FROM ballots e
+    WHERE e.year < :year
+      AND e.voter_id IN (SELECT voter_id FROM ballots WHERE year = :year)
+"""
+
+
+def load_tracker_data(year: int, query=None) -> dict[str, pd.DataFrame]:
+    q = query or run_query
+    p = {"year": year, "prev_year": year - 1}
+
+    players = q(SQL_PLAYERS, p).drop_duplicates(subset="player_id")
     return {
         "players": players,
-        "ballots": this_and_prev,
-        "voters": voters,
-        "earlier_voters": earlier,
+        "ballots": q(SQL_BALLOTS, p),
+        "voters": q(SQL_VOTERS, p),
+        "earlier_voters": q(SQL_EARLIER_VOTERS, p),
     }
 
 
@@ -296,8 +312,8 @@ def render_html(m: dict) -> str:
 # --------------------------------------------------------------------------
 # Streamlit entry point
 # --------------------------------------------------------------------------
-def render_tracker_table(year: int, height: int = 780, fetch=None) -> None:
+def render_tracker_table(year: int, height: int = 780, query=None) -> None:
     import streamlit.components.v1 as components
 
-    model = build_model(load_tracker_data(year, fetch=fetch), year)
+    model = build_model(load_tracker_data(year, query=query), year)
     components.html(render_html(model), height=height, scrolling=False)
