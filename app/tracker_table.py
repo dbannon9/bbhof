@@ -16,9 +16,10 @@ CACHE_TTL = 600            # seconds; call st.cache_data.clear() after a ballot 
 
 
 def run_query(sql: str, params: dict | None = None) -> pd.DataFrame:
-    """Parameterized, cached query against Neon (st.connection handles caching)."""
+    """Parameterized query against Neon. Not cached here (ttl=0): caching is done
+    once per year in get_tracker_html(), so there is only one cache to reason about."""
     conn = st.connection(CONNECTION_NAME, type="sql")
-    return conn.query(sql, params=params or {}, ttl=CACHE_TTL)
+    return conn.query(sql, params=params or {}, ttl=0)
 
 
 SQL_PLAYERS = """
@@ -183,8 +184,9 @@ def build_model(data: dict[str, pd.DataFrame], year: int) -> dict:
 # --------------------------------------------------------------------------
 
 CSS = """
-:root{--bg:#0e1b33;--panel:#152a52;--line:rgba(255,255,255,.09);--text:#e8eefb;
---muted:#8ea3c7;--new:#2dd4bf;--gain:#4ade80;--lose:#f87171;--bar:rgba(96,165,250,.38)}
+:root{--bg:#000e29;--panel:#00163d;--stat-bg:#5f4d12;--line:rgba(148,156,170,.22);--text:#e8eefb;
+--muted:#8ea3c7;--new:#2dd4bf;--gain:#4ade80;--lose:#f87171;--bar:rgba(96,165,250,.38);
+--new-bg:#0b4a5c;--final-bg:#5c1426}
 *{box-sizing:border-box}
 html,body{margin:0;background:transparent;color:var(--text);
 font:13px 'IBM Plex Sans Condensed','Arial Narrow',system-ui,sans-serif}
@@ -198,7 +200,7 @@ table{border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-num
 th,td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);
 padding:0;text-align:center}
 td.c{width:56px;min-width:56px;height:24px}
-.stick{position:sticky;left:0;z-index:2;background:var(--bg);text-align:left;
+.stick{position:sticky;left:0;z-index:2;background:var(--panel);text-align:left;
 padding:0 10px;width:178px;min-width:178px;max-width:178px;white-space:nowrap;
 overflow:hidden;text-overflow:ellipsis}
 thead th{position:sticky;top:0;z-index:3;background:var(--panel);padding:6px 2px 5px;
@@ -207,10 +209,11 @@ thead th.stick{z-index:5;font-weight:600;font-size:14px}
 th .ln{display:block;font-weight:600;font-size:12px;line-height:1.15;overflow-wrap:break-word}
 th .fi{display:block;color:var(--muted);font-size:11px;line-height:1.2}
 th .yr{display:block;color:var(--muted);font-size:11px;margin-top:3px}
-th.new{box-shadow:inset 0 -3px var(--new);background:#14405a}
+th.new{background:var(--new-bg);box-shadow:inset 0 -3px var(--new)}
 th.new .yr{color:var(--new);font-weight:600}
+th.last{background:var(--final-bg);box-shadow:inset 0 -3px var(--lose)}
 th.last .yr{color:var(--lose);font-weight:600}
-tr.stat td.stick{color:var(--muted)}
+tr.stat td.stick{background:var(--stat-bg);color:var(--text);font-weight:600;font-size:12px}
 tr.stat td.c{font-weight:600}
 td.gain{background:var(--gain);color:#052e16;font-weight:700}
 td.lose{background:var(--lose);color:#450a0a;font-weight:700}
@@ -218,11 +221,13 @@ td.net-pos{color:var(--gain)}
 td.net-neg{color:var(--lose)}
 td.pct{background-repeat:no-repeat}
 tr.band td{background:var(--panel);height:22px;color:var(--muted);font-size:12px}
-tr.band td.stick{background:var(--panel)}
-tr.voter td.stick.ft{box-shadow:inset 3px 0 var(--new);color:#99f6e4}
+tr.band td.stick{background:var(--panel);color:var(--text);font-weight:600;font-size:12px}
+tr.voter td.stick{font-weight:600;font-size:12px}
+tr.voter td.stick.ft{background:var(--new-bg);color:var(--text)}
 tr.voter td.stick.anon{font-style:italic;color:var(--muted)}
-tr.voter:hover td:not(.gain):not(.lose){background:rgba(255,255,255,.04)}
-tr.voter:hover td.stick{background:#122342}
+tr.voter:hover td:not(.gain):not(.lose):not(.stick){background:rgba(255,255,255,.04)}
+tr.voter:hover td.stick{background:#002052}
+tr.voter:hover td.stick.ft{background:#0e5d73}
 @media (max-width:600px){
  .stick{width:120px;min-width:120px;max-width:120px;font-size:12px;padding:0 6px}
  td.c{width:64px;min-width:64px;height:24px}
@@ -233,11 +238,10 @@ LEGEND = (
     '<div class="legend">'
     '<span><i style="background:var(--gain)"></i>Gained vote</span>'
     '<span><i style="background:var(--lose)"></i>Lost vote</span>'
-    '<span><i style="background:var(--new)"></i>First-time voter / first year on ballot</span>'
-    '<span><i style="background:transparent;box-shadow:inset 0 0 0 2px var(--lose)"></i>Final year on ballot</span>'
+    '<span><i style="background:var(--new-bg);box-shadow:inset 0 -3px var(--new)"></i>First-time voter / first year on ballot</span>'
+    '<span><i style="background:var(--final-bg);box-shadow:inset 0 -3px var(--lose)"></i>Final year on ballot</span>'
     "</div>"
 )
-
 
 def render_html(m: dict) -> str:
     esc = html.escape
@@ -312,8 +316,27 @@ def render_html(m: dict) -> str:
 # --------------------------------------------------------------------------
 # Streamlit entry point
 # --------------------------------------------------------------------------
+@st.cache_data(ttl=CACHE_TTL, show_spinner="Loading ballots...")
+def get_tracker_html(year: int) -> str:
+    """Whole page for one year, cached by year. Clear after a ballot is saved:
+    get_tracker_html.clear()"""
+    return render_html(build_model(load_tracker_data(year), year))
+
+
 def render_tracker_table(year: int, height: int = 780, query=None) -> None:
     import streamlit.components.v1 as components
 
-    model = build_model(load_tracker_data(year, query=query), year)
-    components.html(render_html(model), height=height, scrolling=False)
+    year = int(year)
+    if query is None:
+        page = get_tracker_html(year)
+    else:  # tests / custom data source: skip the cache
+        page = render_html(build_model(load_tracker_data(year, query=query), year))
+
+    # A container keyed by year gives each year its own iframe, so the browser
+    # can't keep showing the previous year's table.
+    try:
+        box = st.container(key=f"tracker_{year}")
+    except TypeError:  # Streamlit too old for container keys
+        box = st.container()
+    with box:
+        components.html(page, height=height, scrolling=False)
