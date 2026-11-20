@@ -11,7 +11,7 @@ if not check_password():
     st.stop()
 
 #%% Run the App
-st.set_page_config(page_title="Baseball Hall of Fame Tracker",layout="wide")
+st.set_page_config(page_title="Baseball Hall of Fame Tracker",layout="centered")
 
 #%% Get Data
 
